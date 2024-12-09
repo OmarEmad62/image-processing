@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import math
+from PIL import Image
+import io
+import matplotlib.gridspec as gridspec
 
 
 def read_image(file_path):
@@ -75,18 +78,95 @@ def advanced_halftoning(image):
     img_array = np.clip(img_array, 0, 255)
     return img_array.astype(np.uint8)
 
+import numpy as np
+import matplotlib.pyplot as plt
+
 def histogram(image):
     """
-    Computes the histogram of an image without using built-in functions.
+    Computes the histogram of an image and returns the plot as a PIL image.
+    
+    Parameters:
+        image (numpy.ndarray): Input image (grayscale or RGB).
+    
+    Returns:
+        hist (numpy.ndarray): Histogram data (256 bins for pixel intensities).
+        hist_image (PIL.Image): Histogram visualization as a PIL image.
     """
-    gray_image = Gray_image(image)
-    hist = np.zeros(256, dtype=int)
+    # Manually calculate the original histogram
+    
+    img_array=np.array(image)
+    original_histogram = np.zeros(256, dtype=int)  # Array to store counts for 256 intensity levels
+    for row in img_array:
+        for pixel in row:
+            original_histogram[pixel] += 1
 
-    # Count pixel intensities
-    for pixel in gray_image.ravel():
-        hist[pixel] += 1
+    # Calculate the cumulative distribution function (CDF)
+    cdf = np.cumsum(original_histogram)
+    cdf_normalized = (cdf - cdf.min()) / (cdf.max() - cdf.min()) * 255  # Normalize to range 0-255
+    cdf_normalized = cdf_normalized.astype(np.uint8)  # Convert to integer values
 
-    return hist
+    # Apply the CDF to equalize the image
+    equalized_image = np.zeros_like(img_array)
+    for i in range(img_array.shape[0]):
+        for j in range(img_array.shape[1]):
+            equalized_image[i, j] = cdf_normalized[img_array[i, j]]
+
+    # Manually calculate the histogram of the equalized image
+    equalized_histogram = np.zeros(256, dtype=int)
+    for row in equalized_image:
+        for pixel in row:
+            equalized_histogram[pixel] += 1
+
+       # Create a combined plot
+    fig = plt.figure(figsize=(8, 14))  # Adjust figure size for better visualization
+    gs = gridspec.GridSpec(3, 1, height_ratios=[1, 1, 3])  # Allocate more height for the image
+
+    # Original Histogram
+    ax1 = plt.subplot(gs[0])
+    ax1.bar(range(256), original_histogram, width=1, color="gray", edgecolor="black")
+    ax1.set_title("Original Histogram")
+    ax1.set_xlabel("Pixel Intensity")
+    ax1.set_ylabel("Frequency")
+    ax1.set_xlim(0, 255)
+
+    # Equalized Histogram
+    ax2 = plt.subplot(gs[1])
+    ax2.bar(range(256), equalized_histogram, width=1, color="gray", edgecolor="black")
+    ax2.set_title("Equalized Histogram")
+    ax2.set_xlabel("Pixel Intensity")
+    ax2.set_ylabel("Frequency")
+    ax2.set_xlim(0, 255)
+
+    # Equalized Image
+    ax3 = plt.subplot(gs[2])
+    ax3.imshow(equalized_image, cmap="gray")
+    ax3.set_title("Equalized Image")
+    ax3.axis("off")
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save the combined plot to a BytesIO stream
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    plt.close()  # Close the plot to free resources
+
+    # Move the buffer's cursor to the beginning
+    buf.seek(0)
+
+    # Convert the BytesIO stream to a PIL Image
+    combined_image = Image.open(buf)
+    
+
+
+    # Convert the PIL Image to a NumPy array (if needed for your application)
+    combined_image = np.array(combined_image)
+
+    # Close the buffer after all operations are completed
+    buf.close()
+
+    return combined_image
+
 
 def generateRowColumnSobelGradients():
     """Generates the x-component and y-component of Sobel operators."""
@@ -274,11 +354,24 @@ def advanced_edge_difference(image):
 
     return difference_image
 
-def advanced_edge_differenceofGaussians(image):
+def advanced_edge_difference_of_Gaussians(image):
     """
-    Applies advanced edge detection (difference of Gaussians 7x7 and 9x9) manually.
+    Applies advanced edge detection using manually defined Difference of Gaussians (7x7 and 9x9).
+    
+    Parameters:
+        image (numpy.ndarray): Input image (grayscale or color).
+        
+    Returns:
+        numpy.ndarray: Output image after applying Difference of Gaussians, normalized to [0, 255].
     """
-    gray_image = Gray_image(image)
+    # Ensure the image is grayscale
+    
+    
+    if len(image.shape) == 3:  # Check if the image is colored (3 channels)
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_image = image.copy()
+
     height, width = gray_image.shape
     image_7x7 = np.zeros_like(gray_image, dtype=np.float32)
     image_9x9 = np.zeros_like(gray_image, dtype=np.float32)
@@ -307,16 +400,25 @@ def advanced_edge_differenceofGaussians(image):
     ], dtype=np.float32)
 
     # Manually apply 7x7 and 9x9 masks
-    for i in range(3, height-3):
-        for j in range(3, width-3):
-            subimage_7x7 = gray_image[i-3:i+4, j-3:j+4]
-            subimage_9x9 = gray_image[i-4:i+5, j-4:j+5]
+    for i in range(4, height - 4):  # Avoid boundaries for 9x9 mask
+        for j in range(4, width - 4):
+            subimage_7x7 = gray_image[i-3:i+4, j-3:j+4]  # Extract 7x7 region
+            subimage_9x9 = gray_image[i-4:i+5, j-4:j+5]  # Extract 9x9 region
 
-            image_7x7[i, j] = np.sum(mask_7x7 * subimage_7x7)
-            image_9x9[i, j] = np.sum(mask_9x9 * subimage_9x9)
+            # Ensure subimage matches the mask size
+            if subimage_7x7.shape == mask_7x7.shape:
+                image_7x7[i, j] = np.sum(mask_7x7 * subimage_7x7)
+            if subimage_9x9.shape == mask_9x9.shape:
+                image_9x9[i, j] = np.sum(mask_9x9 * subimage_9x9)
 
+    # Calculate the Difference of Gaussian
     DifferenceOfGaussian = np.abs(image_7x7 - image_9x9)
-    return DifferenceOfGaussian
+
+    # Normalize the output to range [0, 255] and convert to uint8
+    DifferenceOfGaussian = (DifferenceOfGaussian - DifferenceOfGaussian.min()) / \
+                           (DifferenceOfGaussian.max() - DifferenceOfGaussian.min()) * 255
+    
+    return DifferenceOfGaussian.astype(np.uint8)
 
 def advanced_edge_contrastBased(image):
     """
@@ -560,36 +662,71 @@ def find_hist_peaks_manual(hist):
     peaks.sort(key=lambda x: hist[x], reverse=True)
     return peaks
 
-def histogram_valleys_segmentation(image):
+def histogram_valleys_segmentation(image, num_clusters=2, value=255):
     """
-    Segmentation using histogram valleys manually.
+    Segments an image into clusters based on histogram valleys.
+
+    Parameters:
+        image (np.ndarray): Input grayscale image.
+        num_clusters (int): Number of clusters (default: 2).
+        value (int): Maximum pixel intensity for cluster masks (default: 255).
+
+    Returns:
+        np.ndarray: A single image with different intensity values for each cluster.
     """
     gray_image = Gray_image(image)
     hist = np.zeros(256, dtype=int)
 
-    # Calculate histogram manually
+    # Manually compute the histogram
     for pixel in gray_image.flatten():
         hist[pixel] += 1
 
-    # Find peaks
-    peaks = find_hist_peaks_manual(hist)[:2]
-    if len(peaks) < 2:
-        raise ValueError("Not enough peaks found for segmentation")
+    # Find peaks in the histogram
+    peaks = find_hist_peaks_manual(hist)
 
-    # Find valley between peaks
-    valley = find_hist_valley_manual(peaks, hist)
+    if len(peaks) < num_clusters + 1:
+        raise ValueError(f"Not enough distinct peaks ({len(peaks)}) for {num_clusters + 1} valleys")
 
-    # Apply segmentation
-    mask = np.zeros_like(gray_image)
-    for i in range(gray_image.shape[0]):
-        for j in range(gray_image.shape[1]):
-            if valley <= gray_image[i, j] <= peaks[1]:
-                mask[i, j] = 255
+    # Sort peaks and find valleys
+    peaks = sorted(peaks[:num_clusters + 1])  # Consider the first `num_clusters + 1` peaks
+    valleys = []
+    for i in range(len(peaks) - 1):
+        valleys.append(find_hist_valley_manual(peaks[i:i + 2], hist))
 
-    return mask
+    # Define thresholds based on valleys
+    thresholds = [0] + valleys + [256]
+
+    # Ensure `cluster_intensity` matches `num_clusters`
+    cluster_intensity = [int((i + 1) * value / num_clusters) for i in range(num_clusters)]
+
+    # Create a single segmented image with different intensities for clusters
+    height, width = gray_image.shape
+    segmented_image = np.zeros((height, width), dtype=np.uint8)
+
+    for x in range(height):
+        for y in range(width):
+            pixel_value = gray_image[x, y]
+            for i in range(len(thresholds) - 1):
+                if thresholds[i] <= pixel_value < thresholds[i + 1]:
+                    if i < len(cluster_intensity):  # Avoid out-of-range index
+                        segmented_image[x, y] = cluster_intensity[i]
+                    break
+
+    return segmented_image
+
+
+
+
 def find_hist_valley_manual(peaks, hist):
     """
     Manually find the valley point between peaks in a histogram.
+
+    Parameters:
+        peaks (list): A pair of peak indices in the histogram.
+        hist (list or np.ndarray): The histogram array.
+
+    Returns:
+        int: Index of the valley between the peaks.
     """
     start, end = peaks[0], peaks[1]
     min_val = float('inf')
@@ -602,44 +739,53 @@ def find_hist_valley_manual(peaks, hist):
 
     return valley
 
+
 def histogram_adaptive_segmentation(image):
     """
-    Adaptive segmentation using manual histogram thresholding.
+    Adaptive Histogram Segmentation using the 2-pass technique.
     """
-    gray_image = Gray_image(image)
-    hist = np.zeros(256, dtype=int)
-
+    # Convert to grayscale
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
+    # First pass: Calculate histogram and find peaks
+    hist = np.zeros(256, dtype=int)
     for pixel in gray_image.flatten():
         hist[pixel] += 1
 
-    # Find peaks
-    peaks = find_hist_peaks_manual(hist)[:2]
+    peaks = find_hist_peaks_manual(hist)
     if len(peaks) < 2:
         raise ValueError("Not enough peaks found for segmentation")
 
-    # Find valley point
-    valley = find_hist_valley_manual(peaks, hist)
+    # Set high and low threshold values
+    low_threshold = peaks[0]
+    high_threshold = peaks[1]
 
-    # Apply segmentation
+    print(f"First Pass - Low threshold: {low_threshold}, High threshold: {high_threshold}")
+
+    # First segmentation using initial thresholds
     mask = np.zeros_like(gray_image)
-    for i in range(gray_image.shape[0]):
-        for j in range(gray_image.shape[1]):
-            if valley <= gray_image[i, j] <= peaks[1]:
-                mask[i, j] = 255
+    mask[(gray_image >= low_threshold) & (gray_image <= high_threshold)] = 255
 
-    # Adaptive adjustment
-    background_mean = np.mean(gray_image[mask == 0])
-    object_mean = np.mean(gray_image[mask == 255])
+    # Calculate the mean intensities for background and object
+    background_mean = np.mean(gray_image[mask == 0]) if np.any(mask == 0) else 0
+    object_mean = np.mean(gray_image[mask == 255]) if np.any(mask == 255) else 0
+    print(f"First Pass - Background mean: {background_mean}, Object mean: {object_mean}")
 
-    adaptive_valley = find_hist_valley_manual([int(background_mean), int(object_mean)], hist)
+    # Second pass: Use the means as new peaks to adjust thresholds
+    new_low_threshold = int(min(background_mean, object_mean))
+    new_high_threshold = int(max(background_mean, object_mean))
 
-    # Final segmentation mask
+    print(f"Second Pass - New Low threshold: {new_low_threshold}, New High threshold: {new_high_threshold}")
+
+    # Final segmentation using new thresholds
     final_mask = np.zeros_like(gray_image)
-    for i in range(gray_image.shape[0]):
-        for j in range(gray_image.shape[1]):
-            if adaptive_valley <= gray_image[i, j] <= object_mean:
-                final_mask[i, j] = 255
+    final_mask[(gray_image >= new_low_threshold) & (gray_image <= new_high_threshold)] = 255
 
     return final_mask
+
+
+
+
+
+
 

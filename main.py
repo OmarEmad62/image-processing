@@ -243,7 +243,7 @@ class GUI:
         elif edge_detection_type == "Difference":
             self.advanced_edge_difference()
         elif edge_detection_type == "Gaussian":
-            self.advanced_edge_differenceofGaussians()
+            self.advanced_edge_difference_of_Gaussians()
         elif edge_detection_type == "Contrast-based":
             self.advanced_edge_contrastBased()
         elif edge_detection_type == "Variance-based":
@@ -441,16 +441,18 @@ class GUI:
         # Refresh images
         self.display_images(technique="Difference Operator")
     
-    def advanced_edge_differenceofGaussians(self):
+    def advanced_edge_difference_of_Gaussians(self):
         if self.original_image is None:
             messagebox.showerror("Error", "Please upload an image first.")
             return
 
         # Call the advanced edge difference function from utils
-        processed_image = advanced_edge_differenceofGaussians(self.original_image)
+        
+        processed_image =advanced_edge_difference_of_Gaussians(self.original_image)
 
         # Update the processed image
         self.processed_image = processed_image
+        
 
         # Refresh images
         self.display_images(technique="Difference of Gaussians")
